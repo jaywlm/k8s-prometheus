@@ -1,0 +1,74 @@
+# prometheus-deploy.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: prometheus
+  namespace: kube-mon
+  labels:
+    app: prometheus
+spec:
+  selector:
+    matchLabels:
+      app: prometheus
+  template:
+    metadata:
+      labels:
+        app: prometheus
+    spec:
+      serviceAccountName: prometheus
+      containers:
+        - name: prometheus-server-configmap-reload
+          image: "jimmidyson/configmap-reload:v0.1"
+          imagePullPolicy: "IfNotPresent"
+          args:
+            - --volume-dir=/etc/prometheus
+            - --webhook-url=http://localhost:9090/-/reload
+          volumeMounts:
+            - mountPath: "/etc/prometheus"
+              name: config-volume
+              readOnly: true
+          resources:
+            limits:
+              cpu: 10m
+              memory: 10Mi
+            requests:
+              cpu: 10m
+              memory: 10Mi
+        - name: prometheus
+          image: prom/prometheus:v2.39.1
+          args:
+            - "--config.file=/etc/prometheus/prometheus.yml"
+            - "--storage.tsdb.path=/prometheus" # 指定tsdb数据路径
+            - "--storage.tsdb.retention.time=24h"
+            - "--web.enable-admin-api" # 控制对admin HTTP API的访问，其中包括删除时间序列等功能
+            - "--web.enable-lifecycle" # 支持热更新，直接执行localhost:9090/-/reload立即生效
+          ports:
+            - containerPort: 9090
+              name: http
+          securityContext:
+            runAsUser: 0
+          volumeMounts:
+            - mountPath: "/etc/prometheus"
+              name: config-volume
+            - mountPath: "/prometheus"
+              name: data
+            - name: certs             
+              readOnly: true          
+              mountPath: /certs
+          resources:
+            requests:
+              cpu: 200m
+              memory: 1024Mi
+            limits:
+              cpu: 200m
+              memory: 1024Mi
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: prometheus-data
+        - configMap:
+            name: prometheus-config
+          name: config-volume
+        - name: certs
+          secret:      
+            secretName: etcd-certs

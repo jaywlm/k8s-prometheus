@@ -1,0 +1,18 @@
+# kubectl create secret generic etcd-certs --from-file=/etc/kubernetes/pki/etcd/healthcheck-client.crt --from-file=/etc/kubernetes/pki/etcd/healthcheck-client.key --from-file=/etc/kubernetes/pki/etcd/ca.crt -n kube-mon
+apiVersion: v1
+kind: Service
+metadata:
+  namespace: kube-system
+  name: etcd
+  labels:
+    k8s-app: etcd
+spec:
+  selector:
+    component: etcd
+  type: ClusterIP
+  clusterIP: None
+  ports:
+  - name: http-metrics
+    port: 2379
+    targetPort: 2379
+    protocol: TCP

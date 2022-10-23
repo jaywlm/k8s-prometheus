@@ -1,0 +1,171 @@
+# config.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: prometheus-config
+  namespace: kube-mon
+data:
+  prometheus.yml: |
+    global:
+      scrape_interval: 15s
+      scrape_timeout: 15s
+    scrape_configs:
+    - job_name: 'prometheus'
+      static_configs:
+      - targets: ['localhost:9090']
+
+    - job_name: "apiservers"
+      kubernetes_sd_configs:
+        - role: endpoints
+      scheme: https
+      tls_config:
+        ca_file: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+        insecure_skip_verify: false
+      authorization:
+        credentials_file: /var/run/secrets/kubernetes.io/serviceaccount/token
+      relabel_configs:
+        - source_labels:
+          - __meta_kubernetes_namespace
+          - __meta_kubernetes_service_name
+          - __meta_kubernetes_endpoint_port_name
+          action: keep
+          regex: default;kubernetes;https
+        - action: labelmap
+          regex: __meta_kubernetes_node_label_(.+)
+
+    - job_name: "scheduler"
+      kubernetes_sd_configs:
+        - role: endpoints
+      scheme: https
+      tls_config:
+        ca_file: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+        insecure_skip_verify: true
+      authorization:
+        credentials_file: /var/run/secrets/kubernetes.io/serviceaccount/token
+      relabel_configs:
+        - source_labels:
+          - __meta_kubernetes_namespace
+          - __meta_kubernetes_service_name
+          action: keep
+          regex: kube-system;kube-scheduler
+        - action: labelmap
+          regex: __meta_kubernetes_node_label_(.+)
+
+    - job_name: "kube-controller-manager"
+      kubernetes_sd_configs:
+        - role: endpoints
+      scheme: https
+      tls_config:
+        ca_file: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+        insecure_skip_verify: true
+      authorization:
+        credentials_file: /var/run/secrets/kubernetes.io/serviceaccount/token
+      relabel_configs:
+        - source_labels:
+          - __meta_kubernetes_namespace
+          - __meta_kubernetes_service_name
+          action: keep
+          regex: kube-system;kube-controller-manager
+        - action: labelmap
+          regex: __meta_kubernetes_node_label_(.+)
+
+    - job_name: "etcd"
+      kubernetes_sd_configs:
+        - role: endpoints
+      scheme: https
+      tls_config:
+        ca_file: /certs/ca.crt 
+        cert_file: /certs/healthcheck-client.crt
+        key_file: /certs/healthcheck-client.key
+        insecure_skip_verify: false
+      authorization:
+        credentials_file: /var/run/secrets/kubernetes.io/serviceaccount/token
+      relabel_configs:
+        - source_labels:
+          - __meta_kubernetes_namespace
+          - __meta_kubernetes_service_name
+          action: keep
+          regex: kube-system;etcd
+        - action: labelmap
+          regex: __meta_kubernetes_node_label_(.+)
+
+    - job_name: "kubelet"
+      kubernetes_sd_configs:
+        - role: node
+      scheme: https
+      tls_config:
+        ca_file: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+        insecure_skip_verify: false
+      authorization:
+        credentials_file: /var/run/secrets/kubernetes.io/serviceaccount/token
+      relabel_configs:
+        - action: labelmap
+          regex: __meta_kubernetes_node_label_(.+)
+
+    - job_name: "kubelet-cadvisor"
+      kubernetes_sd_configs:
+        - role: node
+      scheme: https
+      tls_config:
+        ca_file: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+        insecure_skip_verify: true
+      authorization:
+        credentials_file: /var/run/secrets/kubernetes.io/serviceaccount/token
+      relabel_configs:
+        - action: labelmap
+          regex: __meta_kubernetes_node_label_(.+)
+          replacement: $1
+        - replacement: /metrics/cadvisor # <nodeip>/metrics -> <nodeip>/metrics/cadvisor
+          target_label: __metrics_path__
+    
+    - job_name: "coredns"
+      kubernetes_sd_configs:
+        - role: endpoints
+      scheme: http
+      relabel_configs:
+        - source_labels:
+          - __meta_kubernetes_namespace
+          - __meta_kubernetes_service_name
+          - __meta_kubernetes_endpoint_port_name
+          action: keep
+          regex: kube-system;kube-dns;metrics
+
+    - job_name: "endpoints"
+      kubernetes_sd_configs:
+        - role: endpoints
+      relabel_configs:
+        - source_labels: [__meta_kubernetes_service_annotation_prometheus_io_scrape]
+          action: keep
+          regex: true
+        # 指标接口协议通过 prometheus.io/scheme 这个注解获取 http 或 https
+        - source_labels: [__meta_kubernetes_service_annotation_prometheus_io_scheme]
+          action: replace
+          target_label: __scheme__
+          regex: (https?)
+        - source_labels: [__meta_kubernetes_service_annotation_prometheus_io_path]
+          action: replace
+          target_label: __metrics_path__
+          regex: (.+)
+        # 直接接口地址端口通过 prometheus.io/port 注解获取
+        - source_labels:
+            [__address__, __meta_kubernetes_service_annotation_prometheus_io_port]
+          action: replace
+          target_label: __address__
+          regex: ([^:]+)(?::\d+)?;(\d+) # RE2 正则规则，+是一次或多次，?是0次或1次，其中?:表示非匹配组(意思就是不获取匹配结果)
+          replacement: $1:$2
+        # 映射 Service 的 Label 标签
+        - action: labelmap
+          regex: __meta_kubernetes_service_label_(.+)
+        # 将 namespace 映射成标签
+        - source_labels: [__meta_kubernetes_namespace]
+          action: replace
+          target_label: kubernetes_namespace
+        # 将 Service 名称映射成标签
+        - source_labels: [__meta_kubernetes_service_name]
+          action: replace
+          target_label: kubernetes_name
+        # 将 Pod 名称映射成标签
+        - source_labels: [__meta_kubernetes_pod_name]
+          action: replace
+          target_label: kubernetes_pod_name
+
