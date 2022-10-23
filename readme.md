@@ -1,4 +1,7 @@
 ```
+for kubeadm k8s single or ha 1.24/1.25
+```
+```
 # kubectl create secret generic etcd-certs \
 --from-file=/etc/kubernetes/pki/etcd/healthcheck-client.crt \
 --from-file=/etc/kubernetes/pki/etcd/healthcheck-client.key \
